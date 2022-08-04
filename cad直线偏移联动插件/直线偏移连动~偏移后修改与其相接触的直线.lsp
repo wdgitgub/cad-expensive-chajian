@@ -1,0 +1,142 @@
+(defun sk_load_com()
+;;;组码值提取(sk_dxf 图元名 组码)
+(defun sk_dxf(en code)
+    (if(and(=(type en) 'ENAME)(= (type code) 'INT))
+      (cdr(assoc code (entget en))))
+  )
+;;;=========================
+
+;;;(sk_entmod 图元名 组码 新值 强制模式)
+(defun sk_entmod (en code new mode / e)
+  (if (and (= (type en) 'ENAME)
+     (= (type code) 'INT)
+     new)
+    (progn
+      (setq e(entget en))
+      (if (assoc code e)(entmod(subst(cons code new)(assoc code e)e))
+  (if mode (entmod(reverse(cons(cons code new)(reverse e)))) nil))      
+      )
+    )
+  )
+;;;=========================
+
+;;;计算cp到p1 p2的垂足点
+(defun PerToLine  (cp p1 p2 / norm)
+  (setq        norm (mapcar '- p2 p1)
+        p1   (trans p1 0 norm)
+        cp   (trans cp 0 norm)
+        )
+  (trans (list (car p1) (cadr p1) (caddr cp)) norm 0)
+  )
+;;;=========================
+
+;;;三点共线
+(defun ColinearP  (p1 p2 p3)
+    (
+     (lambda (a b c)
+       (or
+         (equal (+ a b) c 1e-8)
+         (equal (+ b c) a 1e-8)
+         (equal (+ c a) b 1e-8)
+         )
+       )
+      (distance p1 p2)
+      (distance p2 p3)
+      (distance p1 p3)
+      )
+    )
+;;;=========================
+
+;;高亮图元或选择集
+(defun sk_highlight (ss flag / i en)
+  (if (= (type ss) 'PICKSET)
+    (progn
+      (setq i -1)
+      (repeat(sslength ss)
+  (setq en(ssname ss (setq i (1+ i))))
+  (redraw en (if flag 3 4))
+  )
+      )
+    )
+  (if(= (type ss) 'ENAME)(redraw ss (if flag 3 4)))
+  )
+;;;==========================
+  (princ)
+  )
+
+(defun c:oo(/ ANG1 CPT EN ENT0 IP12 MODCODE NEW1 newp1 newp2 NEW2  OF_DIST1 P0 P1 P2 P3 P4 SS SS1
+      ANG2  PX1 PX2 PX3 PX4)
+  (sk_load_com)
+  (if(setq of_dist1(getdist (strcat "\n输入偏移距离["(if of_dist (rtos of_dist) "0")"]:")))(setq of_dist of_dist1))
+  (if (setq ss(ssget":E:S" '((0 . "line"))))
+    (progn
+      (setq sk_cmd(getvar 'cmdecho))
+      (setvar 'cmdecho 0)
+      (setq ent0 (ssname ss 0)
+      p1 (sk_dxf ent0 10)
+      p2 (sk_dxf ent0 11)
+      ang2(angle p1 p2)
+      px1(polar p1 (+ ang2 (* 0.5 pi)) of_dist)
+      px2(polar p2 (+ ang2 (* 0.5 pi)) of_dist)
+      px3(polar p1 (+ ang2 (* 1.5 pi)) of_dist)
+      px4(polar p2 (+ ang2 (* 1.5 pi)) of_dist)
+      )
+      (command "_.zoom" p1 p2)
+      (setq ss1(ssget "_c" p1 p2 '((0 . "line"))))
+      (command "_.zoom" "p")
+      (grdraw px1 px2 6 3)
+      (grdraw px3 px4 6 3)
+      (sk_highlight ss1 t)      
+      (if (setq p0(getpoint  "\n指定偏移方向:"))
+  (progn
+    (sk_highlight ss1 nil)
+    (setq ss1(ssdel ent0 ss1))
+    (setq cpt(PerToLine p0 p1 p2 )
+    ang1(angle cpt p0)
+    new1(polar p1 ang1 of_dist)
+    new2(polar p2 ang1 of_dist)
+    )
+    (while(setq en(ssname ss1 0))
+      (setq p3(sk_dxf en 10)
+      p4(sk_dxf en 11)      
+      modcode nil
+      )
+      (if (or (equal p3 p1 1e-8)        
+        (equal p4 p1 1e-8)
+        (ColinearP p1 p3 p4)
+        )
+        (setq newp1(inters new1 new2 p3 p4 nil))
+        )
+      (if(or (equal p3 p2 1e-8)
+       (equal p4 p2 1e-8)
+       (ColinearP p2 p3 p4))
+        (setq newp2(inters new1 new2 p3 p4 nil)))
+      (if (ColinearP p3 p1 p2)(setq modcode 10))
+      (if (ColinearP p4 p1 p2)(setq modcode 11))
+      (if modcode
+        (progn
+    (setq ip12(inters new1 new2 p3 p4 nil))
+    (sk_entmod en modcode ip12 nil)))
+      (setq ss1(ssdel en ss1))
+      )
+     (sk_entmod ent0 10 (if newp1 newp1 new1) nil)
+    (sk_entmod ent0 11 (if newp2 newp2 new2) nil)    
+    )
+  (progn
+    (princ "\n未指定方向点!")
+    (sk_highlight ss1 nil)
+    )
+  )
+      (if sk_cmd (setvar 'cmdecho sk_cmd))
+      )
+    )
+  (redraw)
+  (princ)
+  )
+(princ)
+
+
+
+(princ "\n本程序采摘自www.lisp123.com更多内容敬请期待！")
+(princ "\n本程序命令：oo")
+(princ)
